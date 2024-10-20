@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geocoding/geocoding.dart'; // For geocoding addresses
+import 'package:barcode_scan2/barcode_scan2.dart'; // Importer stregkodescanner biblioteket
 
 void main() {
   runApp(const MyApp());
@@ -243,9 +244,12 @@ class ItemCard extends StatefulWidget {
 }
 
 class _ItemCardState extends State<ItemCard> {
+  bool hasCalled = false; // Track if the call button was pressed
+  bool isPartMatched = false; // Track if scanned barcode matches the part number
+
   void startTimer() {
     setState(() {
-      widget.item.isRunning = true;
+      widget.item.isRunning = true; // Set running state to true
     });
 
     widget.item.timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -259,7 +263,7 @@ class _ItemCardState extends State<ItemCard> {
   void stopTimer() {
     setState(() {
       widget.item.isRunning = false;
-      widget.item.isCompleted = true;
+      widget.item.isCompleted = true; // Mark the item as completed
       widget.item.timer?.cancel();
     });
   }
@@ -270,64 +274,155 @@ class _ItemCardState extends State<ItemCard> {
     return '$minutes min $remainingSeconds sec';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: widget.item.isCompleted
-          ? Colors.green
-          : widget.item.isRunning
-              ? Colors.yellow
-              : null,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Act: ${widget.item.act}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text('Part: ${widget.item.part}'),
-            Text('Adresse: ${widget.item.address}'),
-            Row(
-              children: [
-                const Icon(Icons.access_time),
-                const SizedBox(width: 4),
-                Text(widget.item.time),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () => _makePhoneCall(widget.item.phone),
-                  icon: const Icon(Icons.phone),
-                  label: const Text('Ring'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _openMaps(widget.item.address),
-                  icon: const Icon(Icons.map),
-                  label: const Text('Vis vej'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: widget.item.isRunning ? stopTimer : startTimer,
-                  icon: widget.item.isRunning ? const Icon(Icons.stop) : const Icon(Icons.play_arrow),
-                  label: widget.item.isRunning ? const Text('Stop') : const Text('Start'),
-                ),
-              ],
-            ),
-            if (widget.item.isCompleted)
-              Text('Tid: ${widget.item.elapsedTime}', style: const TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(
       scheme: 'tel',
       path: phoneNumber,
     );
+
+    // Opens phone app with number and marks as called
     await launchUrl(launchUri);
+
+    setState(() {
+      hasCalled = true;
+    });
+  }
+
+  Future<void> scanBarcode() async {
+    try {
+      // Start scanning barcode
+      var result = await BarcodeScanner.scan();
+
+      if (result.rawContent == widget.item.part) {
+        // If scanned barcode matches the part number
+        setState(() {
+          isPartMatched = true; // Set the matched status to true
+        });
+      } else {
+        // If it doesn't match
+        setState(() {
+          isPartMatched = false;
+        });
+      }
+    } catch (e) {
+      print('Error scanning barcode: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 3, // Light shadow
+      color: widget.item.isCompleted ? Colors.green : Colors.white, // Green if completed, white otherwise
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15), // Rounded corners
+      ),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), // Padding around the card
+      child: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: widget.item.isCompleted ? Colors.green : Colors.white, // Green background if completed
+              borderRadius: BorderRadius.circular(15), // Same rounded corners for the container
+            ),
+            padding: const EdgeInsets.all(16), // Padding inside the card
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Act: ${widget.item.act}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text('Part: ${widget.item.part}', style: TextStyle(color: isPartMatched ? Colors.green : Colors.black)), // Green if matched
+                const SizedBox(height: 4),
+                Text('Adresse: ${widget.item.address}'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 18),
+                    const SizedBox(width: 4),
+                    Text(widget.item.time),
+                  ],
+                ),
+                const SizedBox(height: 16), // Space between info and buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => _makePhoneCall(widget.item.phone),
+                      icon: const Icon(Icons.phone, color: Colors.black), // Black icon
+                      label: const Text('Ring', style: TextStyle(color: Colors.black)), // Black text
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: hasCalled ? Colors.green : Colors.white, // Green if called
+                        elevation: 2, // Light shadow
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12), // Rounded button corners
+                        ),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _openMaps(widget.item.address),
+                      icon: const Icon(Icons.map, color: Colors.black), // Black icon
+                      label: const Text('Vis vej', style: TextStyle(color: Colors.black)), // Black text
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white, // White button
+                        elevation: 2, // Light shadow
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12), // Rounded button corners
+                        ),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: widget.item.isRunning ? stopTimer : startTimer,
+                      icon: widget.item.isRunning
+                          ? const Icon(Icons.stop, color: Colors.black)
+                          : const Icon(Icons.play_arrow, color: Colors.black), // Black icon
+                      label: widget.item.isRunning
+                          ? const Text('Stop', style: TextStyle(color: Colors.black))
+                          : const Text('Start', style: TextStyle(color: Colors.black)), // Black text
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.item.isRunning
+                            ? Colors.yellow
+                            : widget.item.isCompleted
+                                ? Colors.green
+                                : Colors.white, // Yellow when running, green when completed
+                        elevation: 2, // Light shadow
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12), // Rounded button corners
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.item.isCompleted)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      'Tid: ${widget.item.elapsedTime}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.qr_code, color: Colors.black),
+              onPressed: scanBarcode, // Open camera to scan barcode
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openMaps(String address) async {
